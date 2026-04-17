@@ -1,2 +1,21 @@
+# Environnement virtuel Python
+venv/
+.venv/
+env/
 
+# Fichiers de configuration sensibles (TON ARL !)
 config.toml
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Fichiers de musique (ne pas saturer GitHub avec tes MP3/FLAC)
+*.mp3
+*.flac
+*.m4a
+
+# Logs et dossiers temporaires de téléchargement
+*.log
+.deemix/
