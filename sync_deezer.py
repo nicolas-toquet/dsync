@@ -4,8 +4,20 @@ import toml
 import deemix
 import pkgutil
 from pathlib import Path
+from mutagen.easyid3 import EasyID3
+from mutagen.flac import FLAC
+from mutagen.mp3 import MP3
 
-# --- FONCTION D'IMPORT DYNAMIQUE ---
+# --- 1. FONCTIONS DE CONFIGURATION ---
+def load_config():
+    """Charge le fichier de configuration TOML"""
+    config_path = os.path.join(os.path.dirname(__file__), "config.toml")
+    if not os.path.exists(config_path):
+        print(f"❌ Erreur : {config_path} introuvable.")
+        sys.exit(1)
+    return toml.load(config_path)
+
+# --- 2. FONCTION D'IMPORT DYNAMIQUE ---
 def find_class_in_package(package, class_name):
     for loader, name, is_pkg in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
         try:
@@ -16,34 +28,45 @@ def find_class_in_package(package, class_name):
             continue
     return None
 
-# Chargement automatique des outils
-# Note: On cherche 'Deezer' dans le paquet deemix pour l'interface
+# Initialisation des composants Deemix
 DeezerInterface = find_class_in_package(deemix, 'Deezer') 
 Downloader = find_class_in_package(deemix, 'Downloader')
 generateDownloadObject = find_class_in_package(deemix, 'generateDownloadObject')
-loadSettings = find_class_in_package(deemix, 'load') # Pour deemix.settings.load
+loadSettings = find_class_in_package(deemix, 'load')
 
-if not all([DeezerInterface, Downloader, generateDownloadObject, loadSettings]):
-    print("❌ Erreur : Certains composants de deemix sont introuvables.")
-    exit(1)
-
-# --- CLASSE LOGS (Indispensable pour le Downloader) ---
+# --- 3. CLASSES ET UTILITAIRES ---
 class LogListener:
     @classmethod
     def send(cls, key, value=None):
-        # Affiche simplement les infos dans le terminal
         if key == 'info': print(f"ℹ️ {value}")
         elif key == 'downloading': print(f"📥 Téléchargement : {value.get('title')}")
         elif key == 'finished': print(f"✅ Terminé : {value.get('title')}")
 
-# --- LOGIQUE DU SCRIPT ---
+def tag_file_with_id(filepath, track_id):
+    """ Enregistre l'ID Deezer dans les métadonnées du fichier """
+    try:
+        if filepath.endswith('.mp3'):
+            audio = EasyID3(filepath)
+            audio['website'] = str(track_id)
+            audio.save()
+        elif filepath.endswith('.flac'):
+            audio = FLAC(filepath)
+            audio['deezer_id'] = str(track_id)
+            audio.save()
+    except Exception as e:
+        print(f"⚠️ Erreur tag {filepath}: {e}")
 
-def load_config():
-    if not os.path.exists("config.toml"):
-        print("Erreur : config.toml introuvable.")
-        sys.exit(1)
-    return toml.load("config.toml")
+def get_id_from_tags(filepath):
+    """ Lit l'ID Deezer depuis les métadonnées """
+    try:
+        if filepath.endswith('.mp3'):
+            return EasyID3(filepath).get('website', [None])[0]
+        elif filepath.endswith('.flac'):
+            return FLAC(filepath).get('deezer_id', [None])[0]
+    except:
+        return None
 
+# --- 4. LOGIQUE DE SYNCHRONISATION ---
 def sync_playlist(playlist_id):
     config = load_config()
     listener = LogListener()
@@ -51,74 +74,89 @@ def sync_playlist(playlist_id):
     dz = DeezerInterface()
     dz.login_via_arl(config['deezer']['arl'])
 
-    print(f"📡 Récupération des données pour la playlist {playlist_id}...")
-    
-    # Récupération des infos et des pistes
+    print(f"📡 Analyse de la playlist {playlist_id}...")
     playlist_data = dz.api.get_playlist(playlist_id)
     tracks = dz.api.get_playlist_tracks(playlist_id)
     
     if not tracks:
-        print("❌ Impossible de récupérer les morceaux. Abandon pour éviter une suppression accidentelle.")
+        print("❌ Impossible de récupérer les morceaux.")
         return
 
-    # Correction de l'erreur d'index : on extrait les IDs proprement
+    # Extraction robuste des IDs (en isolant la clé 'data')
     deezer_track_ids = set()
-    for t in tracks:
-        if hasattr(t, 'id'): tid = str(t.id) # Si c'est un objet
-        elif isinstance(t, dict): tid = str(t.get('id')) # Si c'est un dict
-        else: tid = str(t) # Si c'est déjà l'ID
-        deezer_track_ids.add(tid)
+    
+    # On vérifie si tracks est un dictionnaire avec une clé 'data' (cas habituel de l'API)
+    actual_tracks = tracks.get('data', tracks) if isinstance(tracks, dict) else tracks
 
+    for t in actual_tracks:
+        if hasattr(t, 'id'): tid = str(t.id)
+        elif isinstance(t, dict): tid = str(t.get('id'))
+        else: tid = str(t)
+        
+        if tid.isdigit(): # On ne garde que ce qui est un nombre (on ignore 'data', 'next', etc.)
+            deezer_track_ids.add(tid)
+    
     playlist_title = playlist_data.title if hasattr(playlist_data, 'title') else playlist_data.get('title')
     base_path = config['storage']['base_path']
     expected_path = os.path.join(base_path, f"{playlist_id} - {playlist_title}")
-    
-    if not os.path.exists(expected_path):
-        os.makedirs(expected_path, exist_ok=True)
+    os.makedirs(expected_path, exist_ok=True)
 
-    # --- PHASE 1 : SUPPRESSION DU SURPLUS ---
-    print("🔍 Comparaison avec le dossier local...")
-    local_files = [f for f in os.listdir(expected_path) if f.endswith(('.mp3', '.flac'))]
+    # --- ÉTAPE A : NETTOYAGE DES OBSOLÈTES ---
+    print("🔍 Scan du dossier local pour nettoyage...")
+    already_downloaded_ids = set()
     
-    deleted_count = 0
-    for filename in local_files:
-        # On vérifie si l'ID (au début du nom) est toujours dans la playlist
-        # On part du principe que le fichier commence par "ID - "
-        file_id = filename.split(' - ')[0]
-        
-        if file_id not in deezer_track_ids:
-            print(f"🗑️ Obsolète (supprimé de Deezer) : {filename}")
-            os.remove(os.path.join(expected_path, filename))
-            deleted_count += 1
+    for filename in os.listdir(expected_path):
+        if filename.endswith(('.mp3', '.flac')):
+            full_path = os.path.join(expected_path, filename)
+            # On tente de lire l'ID dans les tags, sinon on prend le début du nom (compatibilité)
+            f_id = get_id_from_tags(full_path) or filename.split(' - ')[0]
+            
+            if f_id in deezer_track_ids:
+                already_downloaded_ids.add(str(f_id))
+            else:
+                print(f"🗑️ Supprimé de Deezer -> Nettoyage : {filename}")
+                os.remove(full_path)
 
-    if deleted_count == 0:
-        print("✅ Aucun fichier à supprimer.")
-
-    # --- PHASE 2 : TÉLÉCHARGEMENT DES MANQUANTS ---
-    print(f"🚀 Synchronisation vers : {expected_path}")
-    
+    # --- ÉTAPE B : FILTRAGE ET TÉLÉCHARGEMENT ---
     settings = loadSettings()
     settings['downloadLocation'] = expected_path
     settings['createPlaylistFolder'] = False
-    # Template CRUCIAL pour que la suppression fonctionne au prochain coup
-    settings['tracknameTemplate'] = "%track_id% - %artist% - %title%"
+    settings['tracknameTemplate'] = "%artist% - %title%" # Format propre
+    settings['fallbackBitrate'] = True # Évite les erreurs si le 320 n'est pas dispo
     
     bitrate_map = {"FLAC": 9, "MP3_320": 3, "MP3_128": 1}
     bitrate = bitrate_map.get(config['storage'].get('format'), 3)
 
-    url = f"https://www.deezer.com/playlist/{playlist_id}"
-    downloadObject = generateDownloadObject(dz, url, bitrate, {}, listener)
+    ids_to_download = [tid for tid in deezer_track_ids if tid not in already_downloaded_ids]
 
-    if isinstance(downloadObject, list):
-        for obj in downloadObject:
-            Downloader(dz, obj, settings, listener).start()
+    if not ids_to_download:
+        print("✅ Tous les morceaux sont déjà présents (vérifié par tags).")
     else:
-        Downloader(dz, downloadObject, settings, listener).start()
+        print(f"🚀 {len(ids_to_download)} nouveaux morceaux à télécharger...")
+        for track_id in ids_to_download:
+            url = f"https://www.deezer.com/track/{track_id}"
+            try:
+                downloadObject = generateDownloadObject(dz, url, bitrate, {}, listener)
+                if not isinstance(downloadObject, list): downloadObject = [downloadObject]
+                for obj in downloadObject:
+                    Downloader(dz, obj, settings, listener).start()
+                
+                # --- ÉTAPE C : TAGGING IMMÉDIAT ---
+                # On cherche le fichier qui vient d'être créé pour lui mettre son tag
+                # Comme on ne connaît pas le nom exact, on tag tout ce qui n'a pas encore d'ID
+                for filename in os.listdir(expected_path):
+                    if filename.endswith(('.mp3', '.flac')):
+                        fp = os.path.join(expected_path, filename)
+                        if get_id_from_tags(fp) is None:
+                            tag_file_with_id(fp, track_id)
+            except Exception as e:
+                print(f"⚠️ Erreur sur la piste {track_id}: {e}")
 
     print("\n✨ Synchronisation terminée !")
 
+# --- 5. POINT D'ENTRÉE ---
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         sync_playlist(sys.argv[1])
     else:
-        print("Usage: python sync_deezer.py <PLAYLIST_ID>")
+        print("Usage: python3 sync_deezer.py <PLAYLIST_ID>")

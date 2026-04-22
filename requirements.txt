@@ -13,3 +13,4 @@ requests==2.33.1
 toml==0.10.2
 urllib3==2.6.3
 virtualenv==20.33.1
+mutagen==1.47.0
