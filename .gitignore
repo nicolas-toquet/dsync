@@ -2,20 +2,45 @@
 venv/
 .venv/
 env/
+ENV/
 
-# Fichiers de configuration sensibles (TON ARL !)
+# Fichiers de configuration sensibles
 config.toml
 
 # Cache Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
 
-# Fichiers de musique (ne pas saturer GitHub avec tes MP3/FLAC)
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Fichiers de musique (ne pas saturer Git)
 *.mp3
 *.flac
 *.m4a
+*.wav
 
-# Logs et dossiers temporaires de téléchargement
+# Logs et dossiers temporaires
 *.log
 .deemix/
+downloads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Fichiers temporaires de refactorisation
+REFACTORING.md
+SUMMARY.txt

@@ -1,0 +1,17 @@
+# Configuration dsync - EXEMPLE
+# Copiez ce fichier vers config.toml et remplissez vos valeurs
+
+[deezer]
+# Token ARL Deezer (obligatoire)
+# Comment l'obtenir :
+# 1. Connectez-vous sur deezer.com
+# 2. Ouvrez les outils développeur (F12)
+# 3. Application > Cookies > deezer.com > arl
+arl = "VOTRE_TOKEN_ARL_ICI"
+
+[storage]
+# Chemin où seront téléchargés les morceaux
+base_path = "/chemin/vers/votre/dossier/musique"
+
+# Format audio : FLAC, MP3_320, MP3_128
+format = "MP3_320"
