@@ -92,6 +92,157 @@ class DeezerClient:
             print(f"❌ Erreur lors de la récupération des morceaux : {e}")
             return set()
     
+    def get_album_info(self, album_id: str) -> Optional[Any]:
+        """
+        Récupère les informations d'un album.
+        
+        Args:
+            album_id: ID de l'album Deezer
+        
+        Returns:
+            Objet album ou None en cas d'erreur
+        """
+        try:
+            return self.interface.api.get_album(album_id)
+        except Exception as e:
+            print(f"❌ Erreur lors de la récupération de l'album : {e}")
+            return None
+    
+    def get_user_playlists(self, user_id: Optional[str] = None) -> list:
+        """
+        Récupère toutes les playlists de l'utilisateur connecté ou d'un utilisateur spécifique.
+        
+        Args:
+            user_id: ID de l'utilisateur (optionnel, sinon utilise l'utilisateur connecté)
+        
+        Returns:
+            Liste de dictionnaires avec id, title et cover_url de chaque playlist
+        """
+        try:
+            if not user_id:
+                user_id = self.interface.current_user.get('id') if isinstance(self.interface.current_user, dict) else getattr(self.interface.current_user, 'id', None)
+            
+            if not user_id:
+                print("❌ Impossible de récupérer l'ID de l'utilisateur")
+                return []
+            
+            playlists_data = self.interface.api.get_user_playlists(user_id)
+            playlists = []
+            
+            # Extraire les données selon le format
+            items = playlists_data.get('data', []) if isinstance(playlists_data, dict) else playlists_data
+            
+            for playlist in items:
+                playlist_id = str(playlist.get('id')) if isinstance(playlist, dict) else str(getattr(playlist, 'id', ''))
+                title = playlist.get('title', f'Playlist {playlist_id}') if isinstance(playlist, dict) else getattr(playlist, 'title', f'Playlist {playlist_id}')
+                cover_url = playlist.get('picture_medium', '') if isinstance(playlist, dict) else getattr(playlist, 'picture_medium', '')
+                
+                if playlist_id:
+                    playlists.append({
+                        'id': playlist_id,
+                        'title': title,
+                        'cover_url': cover_url,
+                    })
+            
+            print(f"✅ {len(playlists)} playlists trouvées")
+            return playlists
+            
+        except Exception as e:
+            print(f"❌ Erreur lors de la récupération des playlists utilisateur : {e}")
+            return []
+    
+    def get_user_albums(self, user_id: Optional[str] = None) -> list:
+        """
+        Récupère tous les albums favoris de l'utilisateur connecté ou d'un utilisateur spécifique.
+        
+        Args:
+            user_id: ID de l'utilisateur (optionnel, sinon utilise l'utilisateur connecté)
+        
+        Returns:
+            Liste de dictionnaires avec id, title et cover_url de chaque album
+        """
+        try:
+            if not user_id:
+                user_id = self.interface.current_user.get('id') if isinstance(self.interface.current_user, dict) else getattr(self.interface.current_user, 'id', None)
+            
+            if not user_id:
+                print("❌ Impossible de récupérer l'ID de l'utilisateur")
+                return []
+            
+            albums_data = self.interface.api.get_user_albums(user_id)
+            albums = []
+            
+            # Extraire les données selon le format
+            items = albums_data.get('data', []) if isinstance(albums_data, dict) else albums_data
+            
+            for album in items:
+                album_id = str(album.get('id')) if isinstance(album, dict) else str(getattr(album, 'id', ''))
+                title = album.get('title', f'Album {album_id}') if isinstance(album, dict) else getattr(album, 'title', f'Album {album_id}')
+                cover_url = album.get('cover_medium', '') if isinstance(album, dict) else getattr(album, 'cover_medium', '')
+                
+                if album_id:
+                    albums.append({
+                        'id': album_id,
+                        'title': title,
+                        'cover_url': cover_url,
+                    })
+            
+            print(f"✅ {len(albums)} albums trouvés")
+            return albums
+            
+        except Exception as e:
+            print(f"❌ Erreur lors de la récupération des albums utilisateur : {e}")
+            return []
+    
+    def get_current_user_info(self) -> dict:
+        """
+        Récupère les informations de l'utilisateur actuellement connecté.
+        
+        Returns:
+            Dictionnaire avec id et name de l'utilisateur
+        """
+        try:
+            user_data = self.interface.current_user
+            user_id = user_data.get('id') if isinstance(user_data, dict) else getattr(user_data, 'id', None)
+            user_name = user_data.get('name', 'Utilisateur') if isinstance(user_data, dict) else getattr(user_data, 'name', 'Utilisateur')
+            
+            return {
+                'id': str(user_id) if user_id else '',
+                'name': user_name,
+            }
+        except Exception as e:
+            print(f"❌ Erreur lors de la récupération des infos utilisateur : {e}")
+            return {'id': '', 'name': 'Utilisateur'}
+    
+    def get_album_tracks(self, album_id: str) -> Set[str]:
+        """
+        Récupère les IDs de tous les morceaux d'un album.
+        
+        Args:
+            album_id: ID de l'album Deezer
+        
+        Returns:
+            Ensemble des IDs de morceaux (sous forme de chaînes)
+        """
+        try:
+            album_info = self.interface.api.get_album(album_id)
+            
+            if not album_info:
+                print("⚠️  Album non trouvé")
+                return set()
+            
+            # Les tracks d'un album sont dans album_info['tracks'] ou album_info.tracks
+            tracks = album_info.get('tracks', {}).get('data', []) if isinstance(album_info, dict) else getattr(album_info, 'tracks', {}).get('data', [])
+            
+            if not tracks:
+                print("⚠️  Aucun morceau trouvé dans l'album")
+                return set()
+            
+            return self._extract_track_ids(tracks)
+        except Exception as e:
+            print(f"❌ Erreur lors de la récupération des morceaux de l'album : {e}")
+            return set()
+    
     def _extract_track_ids(self, tracks: Any) -> Set[str]:
         """
         Extrait les IDs des morceaux depuis la réponse de l'API.

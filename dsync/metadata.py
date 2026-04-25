@@ -2,7 +2,6 @@
 Gestion des métadonnées audio (tags ID3 et FLAC).
 """
 
-from pathlib import Path
 from typing import Optional
 from mutagen.easyid3 import EasyID3
 from mutagen.flac import FLAC

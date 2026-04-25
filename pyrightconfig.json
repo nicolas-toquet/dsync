@@ -1,0 +1,19 @@
+{
+  "include": [
+    "dsync",
+    "dsync_gui.py",
+    "build.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv",
+    "**/venv"
+  ],
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportUnknownVariableType": "none",
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic"
+}

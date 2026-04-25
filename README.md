@@ -14,7 +14,7 @@ Ce script Python permet de :
 
 ### 1. Prérequis
 
-- Python 3.8 ou supérieur
+- Python 3.10 ou supérieur (requis pour les dépendances récentes)
 - Un compte Deezer Premium (requis pour le téléchargement)
 
 ### 2. Création de l'environnement virtuel

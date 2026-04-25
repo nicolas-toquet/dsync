@@ -44,3 +44,9 @@ Thumbs.db
 # Fichiers temporaires de refactorisation
 REFACTORING.md
 SUMMARY.txt
+
+# Build et distribution
+build/
+dist/
+*.spec
+dsync_preferences.json

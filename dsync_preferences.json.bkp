@@ -1,0 +1,26 @@
+{
+  "arl": "b48bd77afc447f36be33acfb6b962d7780567ed483ede6c89ad2381af413e8315e04e7fbde1beb3cd749966a95127e817d46d132d4ebe50dfdcf21e23958591f7ba8ef91b89b29a4a342770bcd877849bbd101d1ee09d6f38911d76711b06c06",
+  "base_path": "/Users/ntoquet/Music/Deezer",
+  "format": "MP3_320",
+  "profiles": [
+    {
+      "name": "D\u00e9faut",
+      "deezer_id": ""
+    },
+    {
+      "name": "Liam",
+      "deezer_id": "4564471282"
+    },
+    {
+      "name": "Nicolas",
+      "deezer_id": "4564470522"
+    },
+    {
+      "name": "Julie",
+      "deezer_id": "4556649822"
+    }
+  ],
+  "current_profile_name": "D\u00e9faut",
+  "current_profile_folder": "D\u00e9faut",
+  "dark_mode": true
+}

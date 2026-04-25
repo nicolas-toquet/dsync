@@ -4,7 +4,6 @@ Logique principale de synchronisation des playlists.
 
 import os
 from typing import Set, List
-from pathlib import Path
 
 from .config import Config
 from .deezer_client import DeezerClient
@@ -50,7 +49,7 @@ class PlaylistSynchronizer:
         if not playlist_info:
             return False
         
-        playlist_title = self._get_playlist_title(playlist_info)
+        playlist_title = self._get_item_title(playlist_info, 'Playlist')
         print(f"📋 Playlist : {playlist_title}")
         
         # Récupération des morceaux
@@ -64,7 +63,7 @@ class PlaylistSynchronizer:
         print(f"✅ {len(deezer_track_ids)} morceaux trouvés dans la playlist")
         
         # Préparation du dossier de destination
-        download_path = self._prepare_download_path(playlist_id, playlist_title)
+        download_path = self._prepare_download_path(playlist_id, playlist_title, "playlist")
         
         # Étape 1 : Nettoyage des morceaux obsolètes
         already_downloaded_ids = self._cleanup_obsolete_tracks(
@@ -92,28 +91,128 @@ class PlaylistSynchronizer:
         
         return True
     
-    def _get_playlist_title(self, playlist_info) -> str:
-        """Extrait le titre de la playlist."""
-        if hasattr(playlist_info, 'title'):
-            return playlist_info.title
-        elif isinstance(playlist_info, dict):
-            return playlist_info.get('title', 'Playlist sans nom')
-        return 'Playlist sans nom'
+    def sync_album(self, album_id: str) -> bool:
+        """
+        Synchronise un album Deezer.
+        
+        Args:
+            album_id: ID de l'album à synchroniser
+        
+        Returns:
+            True si la synchronisation réussit
+        """
+        print(f"\n{'='*60}")
+        print(f"💿 Synchronisation de l'album {album_id}")
+        print(f"{'='*60}\n")
+        
+        # Connexion à Deezer
+        if not self.client.connect():
+            return False
+        
+        # Récupération des informations de l'album
+        album_info = self.client.get_album_info(album_id)
+        if not album_info:
+            return False
+        
+        album_title = self._get_item_title(album_info, 'Album')
+        print(f"💿 Album : {album_title}")
+        
+        # Récupération des morceaux
+        print(f"📡 Analyse de l'album...")
+        deezer_track_ids = self.client.get_album_tracks(album_id)
+        
+        if not deezer_track_ids:
+            print("❌ Aucun morceau à synchroniser")
+            return False
+        
+        print(f"✅ {len(deezer_track_ids)} morceaux trouvés dans l'album")
+        
+        # Préparation du dossier de destination
+        download_path = self._prepare_download_path(album_id, album_title, "album")
+        
+        # Étape 1 : Nettoyage des morceaux obsolètes
+        already_downloaded_ids = self._cleanup_obsolete_tracks(
+            download_path, 
+            deezer_track_ids
+        )
+        
+        # Étape 2 : Téléchargement des nouveaux morceaux
+        ids_to_download = [
+            tid for tid in deezer_track_ids 
+            if tid not in already_downloaded_ids
+        ]
+        
+        if not ids_to_download:
+            print("\n✅ Tous les morceaux sont déjà présents")
+        else:
+            self._download_new_tracks(
+                ids_to_download,
+                download_path
+            )
+        
+        print(f"\n{'='*60}")
+        print("✨ Synchronisation terminée !")
+        print(f"{'='*60}\n")
+        
+        return True
     
-    def _prepare_download_path(self, playlist_id: str, playlist_title: str) -> str:
+    def _get_item_title(self, item_info, default_prefix: str = 'Item') -> str:
+        """Extrait le titre d'un item (playlist ou album)."""
+        if hasattr(item_info, 'title'):
+            return item_info.title
+        elif isinstance(item_info, dict):
+            return item_info.get('title', f'{default_prefix} sans nom')
+        return f'{default_prefix} sans nom'
+    
+    def _prepare_download_path(self, item_id: str, item_title: str, item_type: str = "playlist") -> str:
         """
         Prépare le dossier de destination pour les téléchargements.
         
         Args:
-            playlist_id: ID de la playlist
-            playlist_title: Titre de la playlist
+            item_id: ID de la playlist ou de l'album
+            item_title: Titre de la playlist ou de l'album
+            item_type: Type d'item ("playlist" ou "album")
         
         Returns:
             Chemin complet du dossier
         """
-        folder_name = f"{playlist_id} - {playlist_title}"
-        download_path = os.path.join(self.config.base_path, folder_name)
+        # Créer le sous-dossier Playlists/ ou Albums/
+        category_folder = "Playlists" if item_type == "playlist" else "Albums"
+        category_path = os.path.join(self.config.base_path, category_folder)
+        os.makedirs(category_path, exist_ok=True)
+        
+        # Chercher un dossier existant avec cet ID (peu importe le titre)
+        existing_folder = None
+        if os.path.exists(category_path):
+            for folder in os.listdir(category_path):
+                if folder.startswith(f"{item_id} - ") or folder == item_id:
+                    existing_folder = folder
+                    break
+        
+        # Créer le dossier avec le format ID - Titre
+        folder_name = f"{item_id} - {item_title}"
+        download_path = os.path.join(category_path, folder_name)
+        
+        # Si un ancien dossier existe avec un nom différent, le renommer
+        if existing_folder and existing_folder != folder_name:
+            old_path = os.path.join(category_path, existing_folder)
+            if os.path.exists(old_path) and old_path != download_path:
+                print(f"📝 Renommage du dossier : {existing_folder} → {folder_name}")
+                os.rename(old_path, download_path)
+        
         os.makedirs(download_path, exist_ok=True)
+        
+        # Sauvegarder les métadonnées dans un fichier .info pour référence
+        info_file = os.path.join(download_path, '.info')
+        import json
+        info_data = {
+            'id': item_id,
+            'title': item_title,
+            'type': item_type
+        }
+        with open(info_file, 'w', encoding='utf-8') as f:
+            json.dump(info_data, f, ensure_ascii=False, indent=2)
+        
         return download_path
     
     def _cleanup_obsolete_tracks(

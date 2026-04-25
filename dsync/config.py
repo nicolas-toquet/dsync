@@ -4,7 +4,6 @@ Gestion de la configuration du projet.
 
 import os
 import sys
-from pathlib import Path
 from typing import Dict, Any
 import toml
 
